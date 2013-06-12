@@ -3,7 +3,7 @@ package AWS::CLIWrapper;
 use strict;
 use warnings;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use JSON;
 use IPC::Cmd;
@@ -77,11 +77,18 @@ sub _execute {
 
     if ($ok) {
         my $json = join "", @$stdout_buf;
-        my($ret) = $self->json->decode_prefix($json);
         warn sprintf("%s.%s[%s]: %s\n",
                      $service, $operation, 'OK', $json,
                     ) if $ENV{AWSCLI_DEBUG};
-
+        local $@;
+        my($ret) = eval {
+            # aws s3 returns null HTTP body, so failed to parse as JSON
+            $self->json->decode_prefix($json);
+        };
+        if ($@) {
+            warn $@ if $ENV{AWSCLI_DEBUG};
+            return $json;
+        }
         return $ret;
     } else {
         my $stdout_str = join "", @$stdout_buf;
@@ -91,8 +98,8 @@ sub _execute {
                          $service, $operation, 'NG', $json,
                         ) if $ENV{AWSCLI_DEBUG};
             my($ret) = $self->json->decode_prefix($json);
-            if (exists $ret->{Errors}{Error}) {
-                $Error = $ret->{Errors}{Error}
+            if (exists $ret->{Errors} && ref($ret->{Errors}) eq 'ARRAY') {
+                $Error = $ret->{Errors}[0];
             } elsif (exists $ret->{Response}{Errors}{Error}) {
                 # old structure (maybe botocore < 0.7.0)
                 $Error = $ret->{Response}{Errors}{Error};
@@ -110,14 +117,16 @@ sub _execute {
     }
 }
 
-# aws help | col -b | perl -ne 'if (/^AVAILABLE/.../^[A-Z]/) {  s/^\s+\?\s+// or next; chomp; printf "sub %-18s { shift->_execute('"'"'%s'"'"', \@_) }\n", $_, $_ }'
-# aws help | col -b | perl -ne 'if (/^AVAILABLE/.../^[A-Z]/) {  s/^\s+\?\s+// or next; chomp; printf "=item B<%s>(\$operation:Str, \$param:HashRef)\n\n", $_}'
+# aws help | col -b | perl -ne 'if (/^AVAILABLE/.../^[A-Z]/) {  s/^\s+o\s+// or next; chomp; printf "sub %-18s { shift->_execute('"'"'%s'"'"', \@_) }\n", $_, $_ }'
+# aws help | col -b | perl -ne 'if (/^AVAILABLE/.../^[A-Z]/) {  s/^\s+o\s+// or next; chomp; printf "=item B<%s>(\$operation:Str, \$param:HashRef)\n\n", $_}'
 sub autoscaling        { shift->_execute('autoscaling', @_) }
 sub cloudformation     { shift->_execute('cloudformation', @_) }
+sub cloudsearch        { shift->_execute('cloudsearch', @_) }
 sub cloudwatch         { shift->_execute('cloudwatch', @_) }
 sub datapipeline       { shift->_execute('datapipeline', @_) }
 sub directconnect      { shift->_execute('directconnect', @_) }
 sub ec2                { shift->_execute('ec2', @_) }
+sub elasticache        { shift->_execute('elasticache', @_) }
 sub elasticbeanstalk   { shift->_execute('elasticbeanstalk', @_) }
 sub elastictranscoder  { shift->_execute('elastictranscoder', @_) }
 sub elb                { shift->_execute('elb', @_) }
@@ -127,12 +136,14 @@ sub importexport       { shift->_execute('importexport', @_) }
 sub opsworks           { shift->_execute('opsworks', @_) }
 sub rds                { shift->_execute('rds', @_) }
 sub redshift           { shift->_execute('redshift', @_) }
+sub route53            { shift->_execute('route53', @_) }
 sub s3                 { shift->_execute('s3', @_) }
 sub ses                { shift->_execute('ses', @_) }
 sub sns                { shift->_execute('sns', @_) }
 sub sqs                { shift->_execute('sqs', @_) }
 sub storagegateway     { shift->_execute('storagegateway', @_) }
 sub sts                { shift->_execute('sts', @_) }
+sub support            { shift->_execute('support', @_) }
 sub swf                { shift->_execute('swf', @_) }
 
 1;
