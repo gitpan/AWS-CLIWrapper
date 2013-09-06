@@ -3,15 +3,27 @@ package AWS::CLIWrapper;
 use strict;
 use warnings;
 
-our $VERSION = '0.09';
+our $VERSION = '1.00';
 
-use JSON;
+use version;
+use JSON 2;
 use IPC::Cmd;
 
 our $Error = { Message => '', Code => '' };
 
 our $true  = do { bless \(my $dummy = 1), "AWS::CLIWrapper::Boolean" };
 our $false = do { bless \(my $dummy = 0), "AWS::CLIWrapper::Boolean" };
+
+my $AWSCLI_VERSION = do {
+    my $vs = qx(aws --version 2>&1) || '';
+    my $v;
+    if ($vs =~ m{/([0-9.]+)\s}) {
+        $v = $1;
+    } else {
+        $v = 0;
+    }
+    version->parse($v);
+};
 
 sub new {
     my($class, %param) = @_;
@@ -31,6 +43,10 @@ sub new {
     return $self;
 }
 
+sub awscli_version {
+    return $AWSCLI_VERSION;
+}
+
 sub param2opt {
     my($k, $v) = @_;
 
@@ -48,9 +64,9 @@ sub param2opt {
             push @v, $v;
         }
     } elsif ($type eq 'ARRAY') {
-        push @v, map { ref($_) ? encode_json($_) : $_ } @$v;
+        push @v, map { ref($_) ? encode_json(_compat_kv($_)) : $_ } @$v;
     } elsif ($type eq 'HASH') {
-        push @v, encode_json($v);
+        push @v, encode_json(_compat_kv($v));
     } elsif ($type eq 'AWS::CLIWrapper::Boolean') {
         if ($$v == 1) {
             return ($k);
@@ -65,11 +81,79 @@ sub param2opt {
     return ($k, @v);
 }
 
+# >= 0.14.0 : Key, Values, Value, Name
+# <  0.14.0 : key, values, value, name
+sub _compat_kv_uc {
+    my $v = shift;
+    my $type = ref $v;
+
+    if ($type && $type eq 'HASH') {
+        for my $hk (keys %$v) {
+            if ($hk =~ /^(?:key|name|values|value)$/) {
+                $v->{ucfirst($hk)} = delete $v->{$hk};
+            }
+        }
+    }
+
+    return $v;
+}
+sub _compat_kv_lc {
+    my $v = shift;
+    my $type = ref $v;
+
+    if ($type && $type eq 'HASH') {
+        for my $hk (keys %$v) {
+            if ($hk =~ /^(?:Key|Name|Values|Values)$/) {
+                $v->{lc($hk)} = delete $v->{$hk};
+            }
+        }
+    }
+
+    return $v;
+}
+*_compat_kv = __PACKAGE__->awscli_version >= 0.14.0 ? *_compat_kv_uc : *_compat_kv_lc;
+
 sub json { $_[0]->{json} }
 
 sub _execute {
-    my($self, $service, $operation, $param, %opt) = @_;
+    my $self    = shift;
+    my $service = shift;
+    my($operation, $param, %opt) = @_;
     my @cmd = ('aws', @{$self->{opt}}, $service, $operation);
+
+    if ($service eq 'ec2' && $operation eq 'run-instances') {
+        # compat: ec2 run-instances
+        # >= 0.14.0 : --count N or --count MIN:MAX
+        # <  0.14.0 : --min-count N and --max-count N
+        if (__PACKAGE__->awscli_version >= 0.14.0) {
+            my($min,$max) = (1,1);
+            for my $hk (keys %$param) {
+                if ($hk eq 'min_count') {
+                    $min = delete $param->{min_count};
+                } elsif ($hk eq 'max_count') {
+                    $max = delete $param->{max_count};
+                }
+            }
+            $param->{count} = "${min}:${max}" unless $param->{count}
+        } else {
+            my($min,$max);
+            for my $hk (keys %$param) {
+                if ($hk eq 'count') {
+                    ($min,$max) = split /:/, delete($param->{count});
+                    $max ||= $min;
+                    last;
+                }
+            }
+            $param->{min_count} = $min unless $param->{min_count};
+            $param->{max_count} = $max unless $param->{max_count};
+        }
+    } elsif ($service eq 's3' && __PACKAGE__->awscli_version >= 0.15.0) {
+        if ($operation !~ /^(?:cp|ls|mb|mv|rb|rm|sync)$/) {
+            return $self->s3api(@_);
+        }
+    } elsif ($service eq 's3api' && __PACKAGE__->awscli_version < 0.15.0) {
+        return $self->s3(@_);
+    }
 
     while (my($k, $v) = each %$param) {
         push @cmd, param2opt($k, $v);
@@ -207,7 +291,7 @@ AWS::CLIWrapper - Wrapper module for aws-cli
 
 =head1 DESCRIPTION
 
-AWS::CLIWrapper is wrapper module for aws-cli (recommend: awscli >= 0.7.0, botocore >= 0.7.0).
+AWS::CLIWrapper is wrapper module for aws-cli (recommend: awscli >= 1.0.0, requires: >= 0.7.0).
 
 AWS::CLIWrapper is a just wrapper module, so you can do everything what you can do with aws-cli.
 
