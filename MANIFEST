@@ -13,8 +13,11 @@ xt/05_dependencies.t
 xt/10_ec2.t
 xt/11_struct-in-list.t
 xt/19_error.t
+xt/20_s3-sync.t
 xt/30_compat.t
 xt/90_dependencies.t
+xt/91_usedmodules.t
+xt/92_usedfunctions.t
 xt/perlcriticrc
 META.yml                                 Module YAML meta-data (added by MakeMaker)
 META.json                                Module JSON meta-data (added by MakeMaker)
