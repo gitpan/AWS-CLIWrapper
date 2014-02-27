@@ -16,8 +16,8 @@ my %WriteMakefileArgs = (
     "LICENSE" => "perl",
     "NAME" => "AWS::CLIWrapper",
     "PREREQ_PM" => {
-        "Pod::Usage" => "1.36",
         "IPC::Cmd"   => 0,
+        "String::ShellQuote" => 0,
         "JSON"       => "2",
         "version"    => "0.77",
     },

@@ -3,11 +3,12 @@ package AWS::CLIWrapper;
 use strict;
 use warnings;
 
-our $VERSION = '1.01';
+our $VERSION = '1.03';
 
 use version;
 use JSON 2;
 use IPC::Cmd;
+use String::ShellQuote;
 
 our $Error = { Message => '', Code => '' };
 
@@ -77,7 +78,6 @@ sub param2opt {
         push @v, $v;
     }
 
-    @v = map { qq{'$_'} } @v;
     return ($k, @v);
 }
 
@@ -154,15 +154,16 @@ sub _execute {
         }
     } elsif ($service eq 's3' && __PACKAGE__->awscli_version >= 0.15.0) {
         if ($operation !~ /^(?:cp|ls|mb|mv|rb|rm|sync|website)$/) {
-            return $self->s3api(@_);
+            return $self->s3api($operation, @_);
         }
     } elsif ($service eq 's3api' && __PACKAGE__->awscli_version < 0.15.0) {
-        return $self->s3(@_);
+        return $self->s3($operation, @_);
     }
 
     while (my($k, $v) = each %$param) {
         push @cmd, param2opt($k, $v);
     }
+    @cmd = map { shell_quote($_) } @cmd;
     warn "cmd: ".join(' ', @cmd) if $ENV{AWSCLI_DEBUG};
 
     my $ret;
@@ -386,6 +387,12 @@ Special case: several OPERATIONs take a single arg. For example "aws s3api get-o
         bucket      => 'my-bucket',
         key         => 'blahblahblah',
         output_file => '/path/to/output/file',
+    })
+
+Special case: s3 OPERATION takes one or two arguments in addition to options. For example "aws s3 cp LocalPath s3://S3Path". Pass an extra ARRAYREF to the s3 method in this case:
+
+    my $res = $aws->s3('cp', ['LocalPath', 's3://S3Path'], {
+        exclude     => '*.bak',
     })
 
 Third arg "opt" is optional. Available key/values are below:
