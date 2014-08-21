@@ -12,6 +12,7 @@ xt/03_pod.t
 xt/05_dependencies.t
 xt/10_ec2.t
 xt/11_struct-in-list.t
+xt/12_nested-boolean.t
 xt/19_error.t
 xt/20_s3-sync.t
 xt/30_compat.t
